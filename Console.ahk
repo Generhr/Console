@@ -51,7 +51,7 @@ Class Console {
 			WinGet, hWnd, ID, A
 
 			if (!DllCall("AllocConsole", "UInt")) {
-				throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 			}
 
 			WinHide, % Format("ahk_id{}", DllCall("GetConsoleWindow"))
@@ -64,7 +64,7 @@ Class Console {
 			this.SetColor(0x0, 0xA)
 
 			if (!DllCall("SetConsoleCtrlHandler", "UInt", RegisterCallback("__ConsoleCtrlHandler"), "UInt", 1, "UInt")) {
-				throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 			}
 
 			GroupAdd, Console, % Format("ahk_id{}", this.Handle)
@@ -77,7 +77,7 @@ Class Console {
 		this.Hide()
 
 		if (!DllCall("FreeConsole", "UInt")) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 
 		this.Handle := ""
@@ -85,7 +85,7 @@ Class Console {
 
 	GetColor() {
 		if (!DllCall("GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := new Structure(20)).Pointer, "UInt")) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 
 		return ({"BackgroundColor": (consoleScreenBufferInfo.NumGet(8, "Word") >> 4) & 0xF, "ForegroundColor": consoleScreenBufferInfo.NumGet(8, "Word") & 0xF})
@@ -93,13 +93,13 @@ Class Console {
 
 	SetColor(backgroundColor := 0x0, foregroundColor := 0xF) {
 		if (!DllCall("SetConsoleTextAttribute", "Int", this.Output, "Int", backgroundColor << 4 | foregroundColor)) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 	}
 
 	GetCursorPosition() {
 		if (!DllCall("GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := new Structure(20)).Pointer)) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 
 		return ({"x": consoleScreenBufferInfo.NumGet(4, "Short"), "y": consoleScreenBufferInfo.NumGet(6, "Short")})
@@ -107,13 +107,13 @@ Class Console {
 
 	SetCursorPosition(x, y) {
 		if (!DllCall("SetConsoleCursorPosition", "Ptr", this.Output, "UInt", x << 4 | y, "UInt")) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 	}
 
 	GetSize() {
 		if (!DllCall("GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := new Structure(20)).Pointer)) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 
 		return ({"Width": consoleScreenBufferInfo.NumGet(0, "Short"), "Height": consoleScreenBufferInfo.NumGet(2, "Short")})
@@ -121,11 +121,11 @@ Class Console {
 
 	SetSize(width, height) {
 		if (!DllCall("SetConsoleScreenBufferSize", "Ptr", this.Output, "Ptr", CreateCoord(width, height).Pointer)) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 
 		if (!DllCall("SetConsoleWindowInfo", "Ptr", this.Output, "UInt", True, "Ptr", CreateSmallRect(0, 0, width, height).Pointer)) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 
 		return (DllCall("SetConsoleScreenBufferSize", "Ptr", this.Output, "UInt", width | height << 16))
@@ -133,13 +133,13 @@ Class Console {
 
 	SetTitle(title) {
 		if (!DllCall("SetConsoleTitle", "Str", title, "UInt")) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 	}
 
 	FillOutputCharacter(character, length, x, y) {
 		if (!DllCall("FillConsoleOutputCharacter", "Ptr", this.Output, "Short", Asc(character), "UInt", length, "UInt", x | y << 4, "Ptr", (numberOfCharsWritten := new Structure(4)).Pointer, "UInt")) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 
 		return (numberOfCharsWritten.NumGet(0, "UInt"))
@@ -155,11 +155,11 @@ Class Console {
 	Hide(disable := 0) {
 		if (disable || this.IsVisible) {
 			if (!DllCall("UnhookWindowsHookEx", "Ptr", this.KeyboardHook, "UInt")) {
-				throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 			}
 
 			if (!DllCall("UnhookWindowsHookEx", "Ptr", this.MouseHook, "UInt")) {
-				throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 			}
 		}
 
@@ -178,11 +178,11 @@ Class Console {
 	Show(enable := 0) {
 		if (enable || !this.IsVisible) {
 			if (!this.KeyboardHook := DllCall("SetWindowsHookEx", "Int", 13, "Ptr", RegisterCallback("__WindowsProc", "Fast"), "Ptr", DllCall("GetModuleHandle", "UInt", 0, "Ptr"), "UInt", 0, "Ptr")) {
-				throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 			}
 
 			if (!this.MouseHook := DllCall("SetWindowsHookEx", "Int", 14, "Ptr", RegisterCallback("__WindowsProc", "Fast"), "Ptr", DllCall("GetModuleHandle", "UInt", 0, "Ptr"), "UInt", 0, "Ptr")) {
-				throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 			}
 		}
 
@@ -221,7 +221,7 @@ Class Console {
 		this.Hide(1)
 
 		if (!DllCall("ReadConsole", "Ptr", this.Input, "Ptr", (buffer := new Structure(numberOfCharsToRead*2)).Pointer, "UInt", numberOfCharsToRead, "UInt*", numberOfCharsRead, "Ptr", CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Pointer, "UInt")) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 
 		this.Show(1)
@@ -237,7 +237,7 @@ Class Console {
 		}
 
 		if (!DllCall("WriteConsole", "Ptr", this.Output, "Str", text, "UInt", StrLen(text), "UInt*", written, "Ptr", 0, "UInt")) {
-			throw (Exception(Format("0x{:U}", DllCall("msvcrt\_i64tow", "Int64", A_LastError, "Ptr*", 0, "UInt", 16, "Str")), -1, FormatMessage(A_LastError)))
+			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
 		}
 
 		return (written - (newLine != 0))  ;* Account for the newline character.
