@@ -1,217 +1,268 @@
-﻿;==============  Include  ======================================================;
+﻿;============ Auto-Execute ====================================================;
+;======================================================  Include  ==============;
 
-#Include, %A_LineFile%\..\..\Core.ahk
-
-;============== Function ======================================================;
-
-__ConsoleCtrlHandler(ctrlType) {  ;: https://docs.microsoft.com/en-us/windows/console/handlerroutine
-	switch (ctrlType) {
-		case 0: {  ;? 0 = CTRL_C_EVENT
-			return (1)
-		}
-		case 2: {  ;? 2 = CTRL_CLOSE_EVENT
-			return (0)
-		}
-	}
-}
-
-__WindowsProc(nCode, wParam, lParam) {  ;* ** GetAsyncKeyState ** ;: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getasynckeystate
-	Critical, On
-
-	if (WinActive("ahk_group Console")) {
-		switch (wParam) {
-			case 0x100: {  ;? 0x100 = WM_KEYDOWN
-				SetFormat IntegerFast, H
-
-				if (GetKeyName(Format("vk{}", NumGet(lParam + 0, "UInt"))) == "Escape") {
-					Console.Hide()
-				}
-			}
-			case 0x0202: {  ;? 0x0202 = WM_LBUTTONUP
-				CoordMode, Mouse, Client
-				MouseGetPos, x, y
-
-				if (!(931 > x || x > 977 || -30 > y || y > -1)) {
-					Console.Hide()
-				}
-			}
-		}
-	}
-
-	return (DllCall("CallNextHookEx", "Ptr", 0, "Int", nCode, "UInt", wParam, "Ptr", lParam))
-}
+#Include %A_LineFile%\..\..\Core.ahk
 
 ;===============  Class  =======================================================;
 
-Class Console {
-	Static Handle := Console.Create()
+class Console {
+	static Window := this.Create()
 
-	Create() {
-		if (!this.Handle) {
-			WinGet, hWnd, ID, A
+	static Create() {
+		if (!this.HasProp("Window")) {
+			hWnd := WinGetID("A")
 
 			if (!DllCall("AllocConsole", "UInt")) {
-				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 			}
 
-			WinHide, % Format("ahk_id{}", DllCall("GetConsoleWindow"))
-			WinActivate, % Format("ahk_id{}", hWnd)
+			WinHide("ahk_id" . DllCall("GetConsoleWindow"))
+			WinActivate("ahk_id" . hWnd)
 
-			this.Handle := DllCall("GetConsoleWindow")
-				, this.Input := DllCall("GetStdHandle", "Int", -10, "Ptr"), this.Output := DllCall("GetStdHandle", "Int", -11, "Ptr")
+			this.Input := DllCall("GetStdHandle", "Int", -10, "Ptr"), this.Output := DllCall("GetStdHandle", "Int", -11, "Ptr")
 
-			DllCall("SetConsoleTitle", "Str", A_ScriptName)
+			this.SetTitle(A_ScriptName)
 			this.SetColor(0x0, 0xA)
 
-			if (!DllCall("SetConsoleCtrlHandler", "UInt", RegisterCallback("__ConsoleCtrlHandler"), "UInt", 1, "UInt")) {
-				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+			if (!DllCall("SetConsoleCtrlHandler", "UInt", CallbackCreate((ctrlType) => (ctrlType == 0 || ctrlType == 2), "Fast", 1), "UInt", 1, "UInt")) {  ;: https://docs.microsoft.com/en-us/windows/console/handlerroutine
+				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 			}
 
-			GroupAdd, Console, % Format("ahk_id{}", this.Handle)
+			GroupAdd("Console", "ahk_id" . hWnd := DllCall("GetConsoleWindow"))
 
-			return (this.Handle)
+			return (hWnd)
 		}
 	}
 
-	Delete() {
+	static Delete() {
 		this.Hide()
 
 		if (!DllCall("FreeConsole", "UInt")) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
-		this.Handle := ""
+		this.DeleteProp("Window")
 	}
 
-	GetColor() {
-		if (!DllCall("GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := new Structure(20)).Pointer, "UInt")) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+	;-------------- Property ------------------------------------------------------;
+
+	static IsVisible {
+		Get {
+			return (DllCall("User32\IsWindowVisible", "UInt", this.Window, "UInt") && WinGetMinMax("ahk_id" . this.Window) != -1)
+		}
+	}
+
+	static Color {
+		Get {
+			return (this.GetColor())
+		}
+	}
+
+	static GetColor() {
+		if (!DllCall("GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Structure(20)).Ptr, "UInt")) {
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
-		return ({"BackgroundColor": (consoleScreenBufferInfo.NumGet(8, "Word") >> 4) & 0xF, "ForegroundColor": consoleScreenBufferInfo.NumGet(8, "Word") & 0xF})
+		return ({BackgroundColor: Format("0x{:X}", NumGet(consoleScreenBufferInfo.Ptr + 8, "Short") >> 4), ForegroundColor: Format("0x{:X}", NumGet(consoleScreenBufferInfo.Ptr + 8, "Short") & 0xF)})
 	}
 
-	SetColor(backgroundColor := 0x0, foregroundColor := 0xF) {
+	static SetColor(backgroundColor := 0x0, foregroundColor := 0xF) {
 		if (!DllCall("SetConsoleTextAttribute", "Int", this.Output, "Int", backgroundColor << 4 | foregroundColor)) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 	}
 
-	GetCursorPosition() {
-		if (!DllCall("GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := new Structure(20)).Pointer)) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+	static CursorPosition {
+		Get {
+			return (this.GetCursorPosition())
 		}
-
-		return ({"x": consoleScreenBufferInfo.NumGet(4, "Short"), "y": consoleScreenBufferInfo.NumGet(6, "Short")})
 	}
 
-	SetCursorPosition(x, y) {
+	static GetCursorPosition() {
+		if (!DllCall("GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Structure(20)).Ptr)) {
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+		}
+
+		return ({x: consoleScreenBufferInfo.NumGet(4, "Short"), y: consoleScreenBufferInfo.NumGet(6, "Short")})
+	}
+
+	static SetCursorPosition(x, y) {
 		if (!DllCall("SetConsoleCursorPosition", "Ptr", this.Output, "UInt", x << 4 | y, "UInt")) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 	}
 
-	GetSize() {
-		if (!DllCall("GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := new Structure(20)).Pointer)) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+	static Size {
+		Get {
+			return (this.GetSize())
 		}
-
-		return ({"Width": consoleScreenBufferInfo.NumGet(0, "Short"), "Height": consoleScreenBufferInfo.NumGet(2, "Short")})
 	}
 
-	SetSize(width, height) {
-		if (!DllCall("SetConsoleScreenBufferSize", "Ptr", this.Output, "Ptr", CreateCoord(width, height).Pointer)) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+	static GetSize() {
+		if (!DllCall("GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Structure(20)).Ptr)) {
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
-		if (!DllCall("SetConsoleWindowInfo", "Ptr", this.Output, "UInt", True, "Ptr", CreateSmallRect(0, 0, width, height).Pointer)) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+		return ({Width: consoleScreenBufferInfo.NumGet(0, "Short"), Height: consoleScreenBufferInfo.NumGet(2, "Short")})
+	}
+
+	static SetSize(width, height) {
+		if (!DllCall("SetConsoleScreenBufferSize", "Ptr", this.Output, "Ptr", Structure.CreateCoord(width, height).Ptr)) {
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+		}
+
+		if (!DllCall("SetConsoleWindowInfo", "Ptr", this.Output, "UInt", True, "Ptr", Structure.CreateSmallRect(0, 0, width, height).Ptr)) {
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
 		return (DllCall("SetConsoleScreenBufferSize", "Ptr", this.Output, "UInt", width | height << 16))
 	}
 
-	SetTitle(title) {
+	static Title {
+		Get {
+			return (this.GetTitle())
+		}
+
+		Set {
+			this.SetTitle(value)
+
+			return (value)
+		}
+	}
+
+	static GetTitle() {
+		if (!DllCall("GetConsoleTitle", "Ptr", (title := Structure(80)).Ptr, "UInt", 80, "UInt")) {
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+		}
+
+		return (StrGet(title))
+	}
+
+	static SetTitle(title) {
 		if (!DllCall("SetConsoleTitle", "Str", title, "UInt")) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 	}
 
-	FillOutputCharacter(character, length, x, y) {
-		if (!DllCall("FillConsoleOutputCharacter", "Ptr", this.Output, "Short", Asc(character), "UInt", length, "UInt", x | y << 4, "Ptr", (numberOfCharsWritten := new Structure(4)).Pointer, "UInt")) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+	;--------------- Method -------------------------------------------------------;
+
+	static FillOutputCharacter(character, length, x, y) {
+		if (!DllCall("FillConsoleOutputCharacter", "Ptr", this.Output, "Short", Ord(character), "UInt", length, "UInt", x | y << 4, "UInt*", &(numberOfCharsWritten := 0), "UInt")) {
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
-		return (numberOfCharsWritten.NumGet(0, "UInt"))
+		return (numberOfCharsWritten)
 	}
 
-	Clear() {
+	static Clear() {
 		size := this.GetSize()
 
 		this.SetCursorPosition(0, 0)
 		return (this.FillOutputCharacter(A_Space, size.Width*size.Height, 0, 0))
 	}
 
-	Hide(disable := 0) {
-		if (disable || this.IsVisible) {
+	static Hide(disable := 0) {
+		visible := this.IsVisible
+
+		if (disable || visible) {
 			if (!DllCall("UnhookWindowsHookEx", "Ptr", this.KeyboardHook, "UInt")) {
-				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 			}
 
 			if (!DllCall("UnhookWindowsHookEx", "Ptr", this.MouseHook, "UInt")) {
-				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 			}
 		}
 
-		if (!disable && this.IsVisible) {
-			this.IsVisible := 0
+		if (!disable && visible) {
+			WinHide(Format("ahk_id{}", this.Window))
 
-			WinHide, % Format("ahk_id{}", this.Handle)
-
-			WinGet, hWnd, ID, A
-			if (!WinExist(Format("ahk_id{}", hWnd))) {
-				Send, !{Escape}
+			try {
+				WinActivate("A")
+			}
+			catch {
+				Send("!{Escape}")
 			}
 		}
 	}
 
-	Show(enable := 0) {
-		if (enable || !this.IsVisible) {
-			if (!this.KeyboardHook := DllCall("SetWindowsHookEx", "Int", 13, "Ptr", RegisterCallback("__WindowsProc", "Fast"), "Ptr", DllCall("GetModuleHandle", "UInt", 0, "Ptr"), "UInt", 0, "Ptr")) {
-				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+	static Show(enable := 0) {
+		visible := this.IsVisible
+
+		if (enable || !visible) {
+			if (!this.KeyboardHook := DllCall("SetWindowsHookEx", "Int", 13, "Ptr", CallbackCreate(WindowsProc, "Fast"), "Ptr", DllCall("GetModuleHandle", "UInt", 0, "Ptr"), "UInt", 0, "Ptr")) {
+				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 			}
 
-			if (!this.MouseHook := DllCall("SetWindowsHookEx", "Int", 14, "Ptr", RegisterCallback("__WindowsProc", "Fast"), "Ptr", DllCall("GetModuleHandle", "UInt", 0, "Ptr"), "UInt", 0, "Ptr")) {
-				throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+			if (!this.MouseHook := DllCall("SetWindowsHookEx", "Int", 14, "Ptr", CallbackCreate(WindowsProc, "Fast"), "Ptr", DllCall("GetModuleHandle", "UInt", 0, "Ptr"), "UInt", 0, "Ptr")) {
+				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+			}
+
+			WindowsProc(nCode, wParam, lParam) {  ;* ** GetAsyncKeyState ** ;: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getasynckeystate
+				Critical(True)
+
+				if (WinActive("ahk_group Console")) {
+					static clicked := False
+
+					switch (wParam) {
+						case 0x100:  ;? 0x100 = WM_KEYDOWN
+							if (GetKeyName(Format("vk{:X}", NumGet(lParam + 0, "UInt"))) == "Escape") {
+								Console.Hide()
+							}
+
+						case 0x0201:  ;? 0x0201 = WM_LBUTTONDOWN
+							CoordMode("Mouse", "Client")
+							MouseGetPos(&x, &y)
+
+							if ((!(931 > x || x > 977 || -30 > y || y > -1))) {
+								clicked := True
+							}
+						case 0x0202:  ;? 0x0202 = WM_LBUTTONUP
+							if (clicked) {
+								CoordMode("Mouse", "Client")
+								MouseGetPos(&x, &y)
+
+								if (!(931 > x || x > 977 || -30 > y || y > -1)) {
+									Console.Hide()
+
+									return
+								}
+							}
+
+							clicked := False
+					}
+				}
+
+				return (DllCall("CallNextHookEx", "Ptr", 0, "Int", nCode, "UInt", wParam, "Ptr", lParam))
 			}
 		}
 
-		if (!enable && !this.IsVisible) {
-			this.IsVisible := 1
+		if (!enable && !visible) {
+			winTitle := "ahk_id" . this.Window
 
-			WinShow, % Format("ahk_id{}", this.Handle)
-			WinSet, AlwaysOnTop, On, % Format("ahk_id{}", this.Handle)
+			WinShow(winTitle)
+			WinSetAlwaysOnTop(True, winTitle)
 
-			WinActivate, % Format("ahk_id{}", this.Handle)
-			WinWaitActive, A
+			WinActivate(winTitle)
+			WinWaitActive("A")
 		}
 	}
 
-	;* Check IP address from CMD: https://www.windows-commandline.com/find-ip-address/.
-	;* Get SID of user: https://www.windows-commandline.com/get-sid-of-user/.
-	Execute(commnad, error := 0) {
-		Static shell := ComObjCreate("WScript.Shell")
+;	;* Check IP address from CMD: https://www.windows-commandline.com/find-ip-address/.
+;	;* Get SID of user: https://www.windows-commandline.com/get-sid-of-user/.
+;	Execute(commnad, error := 0) {
+;		Static shell := ComObjCreate("WScript.Shell")
+;
+;		ComObjError(error)
+;
+;		if (error && error := shell.Exec(commnad).StdErr.ReadAll()) {  ;~ Native error handling.
+;			return (error)
+;		}
+;
+;		return (shell.Exec(commnad).StdOut.ReadAll())
+;	}
 
-		ComObjError(error)
-
-		if (error && error := shell.Exec(commnad).StdErr.ReadAll()) {  ;~ Native error handling.
-			return (error)
-		}
-
-		return (shell.Exec(commnad).StdOut.ReadAll())
-	}
-
-	Read(numberOfCharsToRead := "") {
+	static Read(numberOfCharsToRead := "") {
 		this.Show()
 
 		if (numberOfCharsToRead == "") {
@@ -220,8 +271,8 @@ Class Console {
 
 		this.Hide(1)
 
-		if (!DllCall("ReadConsole", "Ptr", this.Input, "Ptr", (buffer := new Structure(numberOfCharsToRead*2)).Pointer, "UInt", numberOfCharsToRead, "UInt*", numberOfCharsRead, "Ptr", CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Pointer, "UInt")) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+		if (!DllCall("ReadConsole", "Ptr", this.Input, "Ptr", (buffer := Structure(numberOfCharsToRead*2)).Ptr, "UInt", numberOfCharsToRead, "UInt*", &(numberOfCharsRead := 0), "Ptr", Structure.CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Ptr, "UInt")) {
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
 		this.Show(1)
@@ -229,17 +280,21 @@ Class Console {
 		return (SubStr(buffer.StrGet(), 1, numberOfCharsRead - 2))  ;* Account for the newline and carriage return characters.
 	}
 
-	Write(text := "Red hot cock", newLine := 1) {
+	static Log(text, newLine := True) {
 		this.Show()
+
+		if (text.HasProp("Print")) {
+			text := text.Print()
+		}
 
 		if (newLine) {
 			text .= "`n"
 		}
 
-		if (!DllCall("WriteConsole", "Ptr", this.Output, "Str", text, "UInt", StrLen(text), "UInt*", written, "Ptr", 0, "UInt")) {
-			throw (Exception(Format("0x{:X}", A_LastError), -1, FormatMessage(A_LastError)))
+		if (!DllCall("WriteConsole", "Ptr", this.Output, "Str", text, "UInt", StrLen(text), "UInt*", &(written := 0), "Ptr", 0, "UInt")) {
+			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
-		return (written - (newLine != 0))  ;* Account for the newline character.
+		return (written - (!!newLine))  ;* Account for the newline character.
 	}
 }
