@@ -36,23 +36,24 @@ class Console {
 
 	static Create() {
 		if (!this.HasProp("Window")) {
-			hWnd := WinGetID("A")
+			activeHandle := WinGetID("A")
 
 			if (!DllCall("AllocConsole", "UInt")) {
 				throw (MessageError(DllCall("Kernel32\GetLastError")))
 			}
 
-			WinActivate(hWnd)
+			consoleHandle := DllCall("GetConsoleWindow")
 
-			hWnd := DllCall("GetConsoleWindow")
-
-			if (!DllCall("User32\SetWindowPos", "Ptr", hWnd, "Ptr", -1  ;? -1 = HWND_TOPMOST
+			if (!DllCall("User32\SetWindowPos", "Ptr", consoleHandle, "Ptr", -1  ;? -1 = HWND_TOPMOST
 				, "Int", A_ScreenWidth - 800, "Int", 50, "Int", 750, "Int", 500, "UInt", 0x0080, "UInt")) {  ;? 0x0080 = SWP_HIDEWINDOW  ;: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos
 				throw (MessageError(DllCall("Kernel32\GetLastError")))
 			}
 
-			WinSetStyle(-0xE40000, hWnd)  ;? 0xE40000 = WS_CAPTION | WS_THICKFRAME | WS_VSCROLL
-			WinSetTransparent(200, hWnd)
+			WinSetStyle(-0x00E40000, consoleHandle)  ;? 0x00E40000 = WS_CAPTION | WS_THICKFRAME | WS_VSCROLL
+			WinSetExStyle(+0x00000080, consoleHandle)  ;? 0x00000080 = WS_EX_TOOLWINDOW
+			WinSetTransparent(200, consoleHandle)
+
+			WinActivate(activeHandle)
 
 			this.Input := DllCall("GetStdHandle", "Int", -10, "Ptr"), this.Output := DllCall("GetStdHandle", "Int", -11, "Ptr")
 
@@ -63,9 +64,9 @@ class Console {
 				throw (MessageError(DllCall("Kernel32\GetLastError")))
 			}
 
-			GroupAdd("Console", "ahk_id" . hWnd)
+			GroupAdd("Console", "ahk_id" . consoleHandle)
 
-			return (hWnd)
+			return (consoleHandle)
 		}
 	}
 
