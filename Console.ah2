@@ -32,7 +32,7 @@
 ;===============  Class  =======================================================;
 
 class Console {
-	static window := this.Create()
+	static Handle := this.Create()
 
 	static Create() {
 		if (!this.HasProp("Window")) {
@@ -43,9 +43,11 @@ class Console {
 			}
 
 			WinActivate(hWnd)
-			WinHide(hWnd := DllCall("GetConsoleWindow"))
 
-			if (!DllCall("User32\SetWindowPos", "Ptr", hWnd, "Ptr", 0, "Int", A_ScreenWidth - 800, "Int", 50, "Int", 750, "Int", 500, "UInt", 0, "UInt")) {
+			hWnd := DllCall("GetConsoleWindow")
+
+			if (!DllCall("User32\SetWindowPos", "Ptr", hWnd, "Ptr", -1  ;? -1 = HWND_TOPMOST
+				, "Int", A_ScreenWidth - 800, "Int", 50, "Int", 750, "Int", 500, "UInt", 0x0080, "UInt")) {  ;? 0x0080 = SWP_HIDEWINDOW  ;: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos
 				throw (MessageError(DllCall("Kernel32\GetLastError")))
 			}
 
@@ -54,14 +56,14 @@ class Console {
 
 			this.Input := DllCall("GetStdHandle", "Int", -10, "Ptr"), this.Output := DllCall("GetStdHandle", "Int", -11, "Ptr")
 
-			this.SetTitle(A_ScriptName)
+			this.SetTitle("Console")
 			this.SetColor(0x0, 0xA)
 
 			if (!DllCall("SetConsoleCtrlHandler", "UInt", CallbackCreate((ctrlType) => (ctrlType == 0 || ctrlType == 2), "Fast", 1), "UInt", 1, "UInt")) {  ;: https://docs.microsoft.com/en-us/windows/console/handlerroutine
 				throw (MessageError(DllCall("Kernel32\GetLastError")))
 			}
 
-			GroupAdd("Console", "ahk_id" . DllCall("GetConsoleWindow"))
+			GroupAdd("Console", "ahk_id" . hWnd)
 
 			return (hWnd)
 		}
@@ -81,7 +83,9 @@ class Console {
 
 	static IsVisible {
 		Get {
-			return (DllCall("User32\IsWindowVisible", "UInt", this.Window, "UInt") && (WinGetMinMax(this.Window) != -1))
+			handle := this.Handle
+
+			return (DllCall("User32\IsWindowVisible", "UInt", handle, "UInt") && (WinGetMinMax(handle) != -1))
 		}
 	}
 
@@ -191,7 +195,7 @@ class Console {
 		size := this.GetSize()
 
 		this.SetCursorPosition(0, 0)
-		WinSetStyle(-0x00200000, this.Window)  ;? 0x00200000 = WS_VSCROLL
+		WinSetStyle(-0x00200000, this.Handle)  ;? 0x00200000 = WS_VSCROLL
 
 		return (this.FillOutputCharacter(A_Space, size.Width*size.Height, 0, 0))
 	}
@@ -200,9 +204,14 @@ class Console {
 		visible := this.IsVisible
 
 		if (!disable && visible) {
-			Send("!{Escape}")
+			WinHide(this.Handle)
 
-			WinHide(this.Window)
+			try {
+				WinActivate("A")
+			}
+			catch {
+				Send("!{Escape}")
+			}
 		}
 
 		if (disable || visible) {
@@ -217,13 +226,10 @@ class Console {
 	}
 
 	static Show(enable := False) {
-		visible := this.IsVisible
+		visible := this.IsVisible, handle := this.Handle
 
 		if (!(enable || visible)) {
-			hWnd := this.Window
-
-			DllCall("User32\ShowWindow", "Ptr", hWnd, "Int", 4)  ;? 4 = SW_SHOWNOACTIVATE
-			WinSetAlwaysOnTop(True, hWnd)
+			DllCall("User32\ShowWindow", "Ptr", handle, "Int", 4)  ;? 4 = SW_SHOWNOACTIVATE
 		}
 
 		if (enable || !visible) {
@@ -253,8 +259,8 @@ class Console {
 
 					switch (wParam) {
 						case 0x0201:  ;? 0x0201 = WM_LBUTTONDOWN
-						case 0x0202:  ;? 0x0202 = WM_LBUTTONUP
 					}
+
 				}
 
 				return (DllCall("CallNextHookEx", "Ptr", 0, "Int", nCode, "UInt", wParam, "Ptr", lParam))
