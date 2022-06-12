@@ -192,13 +192,52 @@ class Console {
 		return (numberOfCharsWritten)
 	}
 
-	static Clear() {
-		size := this.GetSize()
+	static Show(enable := False) {
+		visible := this.IsVisible, handle := this.Handle
 
-		this.SetCursorPosition(0, 0)
-		WinSetStyle(-0x00200000, this.Handle)  ;? 0x00200000 = WS_VSCROLL
+		if (!(enable || visible)) {
+			DllCall("User32\ShowWindow", "Ptr", handle, "Int", 4)  ;? 4 = SW_SHOWNOACTIVATE
+		}
 
-		return (this.FillOutputCharacter(A_Space, size.Width*size.Height, 0, 0))
+		if (enable || !visible) {
+			if (!(this.KeyboardHook := DllCall("SetWindowsHookEx", "Int", 13, "Ptr", CallbackCreate(LowLevelKeyboardProc, "Fast"), "Ptr", DllCall("GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr"))) {
+				throw (MessageError(DllCall("Kernel32\GetLastError")))
+			}
+
+			LowLevelKeyboardProc(nCode, wParam, lParam) {
+				Critical(True)
+
+				if (!nCode) {  ;? 0 = HC_ACTION
+					if (WinActive("ahk_group Console") && Format("{:#x}", NumGet(lParam, "UInt")) == 0x1B) {  ;? 0x1B = VK_ESCAPE
+						if (wParam == 0x101) {  ;? 0x101 = WM_KEYUP
+							Console.Hide()
+						}
+
+						return (1)
+					}
+				}
+
+				return (DllCall("CallNextHookEx", "Ptr", 0, "Int", nCode, "Ptr", wParam, "Ptr", lParam, "Ptr"))
+			}
+
+			if (!(this.MouseHook := DllCall("SetWindowsHookEx", "Int", 14, "Ptr", CallbackCreate(LowLevelMouseProc, "Fast"), "Ptr", DllCall("GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr"))) {
+				throw (MessageError(DllCall("Kernel32\GetLastError")))
+			}
+
+			LowLevelMouseProc(nCode, wParam, lParam) {
+				Critical(True)
+
+				if (!nCode) {
+					if (WinActive("ahk_group Console")) {
+						switch (wParam) {
+							case 0x0201:  ;? 0x0201 = WM_LBUTTONDOWN
+						}
+					}
+				}
+
+				return (DllCall("CallNextHookEx", "Ptr", 0, "Int", nCode, "Ptr", wParam, "Ptr", lParam, "Ptr"))
+			}
+		}
 	}
 
 	static Hide(disable := False) {
@@ -216,56 +255,31 @@ class Console {
 		}
 
 		if (disable || visible) {
-			if (!DllCall("UnhookWindowsHookEx", "Ptr", this.KeyboardHook, "UInt")) {
-				throw (MessageError(DllCall("Kernel32\GetLastError")))
-			}
-
-			if (!DllCall("UnhookWindowsHookEx", "Ptr", this.MouseHook, "UInt")) {
+			if (!DllCall("UnhookWindowsHookEx", "Ptr", this.KeyboardHook, "UInt") || !DllCall("UnhookWindowsHookEx", "Ptr", this.MouseHook, "UInt")) {
 				throw (MessageError(DllCall("Kernel32\GetLastError")))
 			}
 		}
 	}
 
-	static Show(enable := False) {
-		visible := this.IsVisible, handle := this.Handle
+	static Log(text := "", newLine := True) {
+		if (text != "") {
+			if (!this.IsVisible) {
+				this.Show()
+			}
 
-		if (!(enable || visible)) {
-			DllCall("User32\ShowWindow", "Ptr", handle, "Int", 4)  ;? 4 = SW_SHOWNOACTIVATE
-		}
+			if (text.HasProp("Print")) {
+				text := text.Print()
+			}
 
-		if (enable || !visible) {
-			if (!(this.KeyboardHook := DllCall("SetWindowsHookEx", "Int", 13, "Ptr", CallbackCreate(KeyboardHook, "Fast"), "Ptr", DllCall("GetModuleHandle", "UInt", 0, "Ptr"), "UInt", 0, "Ptr"))) {
+			if (newLine) {
+				text .= "`n"
+			}
+
+			if (!DllCall("WriteConsole", "Ptr", this.Output, "Str", text, "UInt", StrLen(text), "UInt*", &(written := 0), "Ptr", 0, "UInt")) {
 				throw (MessageError(DllCall("Kernel32\GetLastError")))
 			}
 
-			KeyboardHook(nCode, wParam, lParam) {
-				if (WinActive("ahk_group Console")) {
-					Critical(True)
-
-					if (wParam == 0x101 && GetKeyName(Format("vk{:X}", NumGet(lParam, "UInt"))) == "Escape") {  ;? 0x101 = WM_KEYUP
-						Console.Hide()
-					}
-				}
-
-				return (DllCall("CallNextHookEx", "Ptr", 0, "Int", nCode, "UInt", wParam, "Ptr", lParam))
-			}
-
-			if (!(this.MouseHook := DllCall("SetWindowsHookEx", "Int", 14, "Ptr", CallbackCreate(MouseHook, "Fast"), "Ptr", DllCall("GetModuleHandle", "UInt", 0, "Ptr"), "UInt", 0, "Ptr"))) {
-				throw (MessageError(DllCall("Kernel32\GetLastError")))
-			}
-
-			MouseHook(nCode, wParam, lParam) {
-				if (WinActive("ahk_group Console")) {
-					Critical(True)
-
-					switch (wParam) {
-						case 0x0201:  ;? 0x0201 = WM_LBUTTONDOWN
-					}
-
-				}
-
-				return (DllCall("CallNextHookEx", "Ptr", 0, "Int", nCode, "UInt", wParam, "Ptr", lParam))
-			}
+			return (written - !!newLine)  ;* Account for the newline character.
 		}
 	}
 
@@ -289,25 +303,14 @@ class Console {
 		return (SubStr(buffer.StrGet(), 1, numberOfCharsRead - 2))  ;* Account for the newline and carriage return characters.
 	}
 
-	static Log(text := unset, newLine := True) {
-		if (IsSet(text)) {
-			if (!this.IsVisible) {
-				this.Show()
-			}
+	static Clear() {
+		size := this.GetSize()
 
-			if (text.HasProp("Print")) {
-				text := text.Print()
-			}
+		this.SetCursorPosition(0, 0)
+		numberOfCharsWritten := this.FillOutputCharacter(A_Space, size.Width*size.Height, 0, 0)
 
-			if (newLine) {
-				text .= "`n"
-			}
+		WinSetStyle(-0x00200000, this.Handle)  ;? 0x00200000 = WS_VSCROLL
 
-			if (!DllCall("WriteConsole", "Ptr", this.Output, "Str", text, "UInt", StrLen(text), "UInt*", &(written := 0), "Ptr", 0, "UInt")) {
-				throw (MessageError(DllCall("Kernel32\GetLastError")))
-			}
-
-			return (written - !!newLine)  ;* Account for the newline character.
-		}
+		return (numberOfCharsWritten)
 	}
 }
