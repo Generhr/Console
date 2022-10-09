@@ -111,7 +111,7 @@ class Console {
 	}
 
 	static GetColor() {
-		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Structure(20)).Ptr, "UInt")) {
+		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Buffer(20)).Ptr, "UInt")) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
@@ -131,7 +131,7 @@ class Console {
 	}
 
 	static GetCursorPosition() {
-		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Structure(20)).Ptr)) {
+		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Buffer(20)).Ptr)) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
@@ -151,7 +151,7 @@ class Console {
 	}
 
 	static GetSize() {
-		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Structure(20)).Ptr)) {
+		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Buffer(20)).Ptr)) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
@@ -159,11 +159,11 @@ class Console {
 	}
 
 	static SetSize(width, height) {
-		if (!DllCall("Kernel32\SetConsoleScreenBufferSize", "Ptr", this.Output, "Ptr", Structure.CreateCoord(width, height).Ptr)) {
+		if (!DllCall("Kernel32\SetConsoleScreenBufferSize", "Ptr", this.Output, "Ptr", Buffer.CreateCoord(width, height).Ptr)) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
-		if (!DllCall("Kernel32\SetConsoleWindowInfo", "Ptr", this.Output, "UInt", True, "Ptr", Structure.CreateSmallRect(0, 0, width, height).Ptr)) {
+		if (!DllCall("Kernel32\SetConsoleWindowInfo", "Ptr", this.Output, "UInt", True, "Ptr", Buffer.CreateSmallRect(0, 0, width, height).Ptr)) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
@@ -183,7 +183,7 @@ class Console {
 	}
 
 	static GetTitle() {
-		if (!DllCall("Kernel32\GetConsoleTitle", "Ptr", (title := Structure(80)).Ptr, "UInt", 80, "UInt")) {
+		if (!DllCall("Kernel32\GetConsoleTitle", "Ptr", (title := Buffer(80)).Ptr, "UInt", 80, "UInt")) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
@@ -214,7 +214,7 @@ class Console {
 				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 			}
 		}
-		else if (A_Debug) {
+		else if (IsSet(A_Debug) && A_Debug) {
 			throw (TypeError(Format("``keyboardProc``({}) is invalid.", Type(keyboardProc)), -2, "This parameter must be a callback."))
 		}
 	}
@@ -237,7 +237,7 @@ class Console {
 				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 			}
 		}
-		else if (A_Debug) {
+		else if (IsSet(A_Debug) && A_Debug) {
 			throw (TypeError(Format("``mouseProc``({}) is invalid.", Type(mouseProc)), -2, "This parameter must be a callback."))
 		}
 	}
@@ -354,7 +354,7 @@ class Console {
 
 ;		this.Hide(True)
 
-		if (!DllCall("Kernel32\ReadConsole", "Ptr", this.Input, "Ptr", (buffer := Structure(numberOfCharsToRead*2)).Ptr, "UInt", numberOfCharsToRead, "UInt*", &(numberOfCharsRead := 0), "Ptr", Structure.CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Ptr, "UInt")) {
+		if (!DllCall("Kernel32\ReadConsole", "Ptr", this.Input, "Ptr", (buffer := Buffer(numberOfCharsToRead*2)).Ptr, "UInt", numberOfCharsToRead, "UInt*", &(numberOfCharsRead := 0), "Ptr", Buffer.CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Ptr, "UInt")) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
