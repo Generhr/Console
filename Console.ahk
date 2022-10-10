@@ -35,6 +35,8 @@ class Console {
 	static Handle := this.Create()
 		, __KeyboardHook := 0, __MouseHook := 0
 
+		, TimeOut := False
+
 	static Create() {
 		if (!this.HasProp("Window")) {
 			try {
@@ -264,7 +266,7 @@ class Console {
 				LowLevelKeyboardProc(nCode, wParam, lParam) {
 					Critical(True)
 
-					if (!nCode) {  ;? 0 = HC_ACTION
+					if (!nCode && !this.TimeOut) {  ;? 0 = HC_ACTION
 						if (Format("{:#x}", NumGet(lParam, "UInt")) == 0x1B && (WinActive("ahk_group Console") || A_TickCount - time < 2000)) {  ;? 0x1B = VK_ESCAPE
 							if (wParam == 0x0101) {  ;? 0x0101 = WM_KEYUP
 								this.Hide()
@@ -286,7 +288,7 @@ class Console {
 				LowLevelMouseProc(nCode, wParam, lParam) {
 					Critical(True)
 
-					if (!nCode) {
+					if (!nCode && !this.TimeOut) {
 						if (WinActive("ahk_group Console")) {
 							switch (wParam) {
 								case 0x0201:  ;? 0x0201 = WM_LBUTTONDOWN
@@ -343,7 +345,7 @@ class Console {
 		}
 	}
 
-	static Read(numberOfCharsToRead := unset) {
+	static Read(numberOfCharsToRead?) {
 		if (!this.IsVisible) {
 			this.Show()
 		}
@@ -352,15 +354,34 @@ class Console {
 			numberOfCharsToRead := this.GetSize().Width
 		}
 
-;		this.Hide(True)
+		this.TimeOut := True
 
-		if (!DllCall("Kernel32\ReadConsole", "Ptr", this.Input, "Ptr", (buffer := Buffer(numberOfCharsToRead*2)).Ptr, "UInt", numberOfCharsToRead, "UInt*", &(numberOfCharsRead := 0), "Ptr", Buffer.CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Ptr, "UInt")) {
+		try {
+			activeHandle := WinGetID("A")
+		}
+		catch {
+			try {
+				WinActivate("A")
+			}
+			catch {
+				Send("!{Escape}")
+			}
+			finally {
+				activeHandle := WinGetID("A")
+			}
+		}
+
+		WinActivate(this.Handle)
+
+		if (!DllCall("Kernel32\ReadConsole", "Ptr", this.Input, "Ptr", (data := Buffer(numberOfCharsToRead*2)).Ptr, "UInt", numberOfCharsToRead, "UInt*", &(numberOfCharsRead := 0), "Ptr", Buffer.CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Ptr, "UInt")) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
-;		this.Show(True)
+		WinActivate(activeHandle)
 
-		return (SubStr(buffer.StrGet(), 1, numberOfCharsRead - 2))  ;* Account for the newline and carriage return characters.
+		this.TimeOut := False
+
+		return (SubStr(data.StrGet(), 1, numberOfCharsRead - 2))  ;* Account for the newline and carriage return characters.
 	}
 
 	static Clear() {
