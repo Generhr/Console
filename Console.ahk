@@ -27,15 +27,13 @@
 ;============ Auto-Execute ====================================================;
 ;======================================================  Include  ==============;
 
-#Include %A_LineFile%\..\..\Core.ahk
+#Include %A_LineFile%\..\..\Core.ahk  ;* Import `Hook()`, `Buffer()` and `ErrorFromMessage()`.
 
 ;===============  Class  =======================================================;
 
 class Console {
 	static Handle := this.Create()
-		, __KeyboardHook := 0, __MouseHook := 0
-
-		, TimeOut := False
+		, KeyboardHook := 0, MouseHook := 0
 
 	static Create() {
 		if (!this.HasProp("Window")) {
@@ -76,7 +74,7 @@ class Console {
 			this.SetTitle("Console")
 			this.SetColor(0x0, 0xA)
 
-			if (!DllCall("Kernel32\SetConsoleCtrlHandler", "UInt", CallbackCreate((ctrlType) => (ctrlType == 0 || ctrlType == 2), "Fast", 1), "UInt", 1, "UInt")) {  ;: https://docs.microsoft.com/en-us/windows/console/handlerroutine
+			if (!DllCall("Kernel32\SetConsoleCtrlHandler", "UInt", this.__ConsoleCtrlHandlerCallback := CallbackCreate((ctrlType) => (ctrlType == 0 || ctrlType == 2), "Fast", 1), "UInt", 1, "UInt")) {  ;: https://docs.microsoft.com/en-us/windows/console/handlerroutine
 				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 			}
 
@@ -89,6 +87,8 @@ class Console {
 	static Delete() {
 		this.Hide()
 
+		CallbackFree(this.__ConsoleCtrlHandlerCallback)
+
 		if (!DllCall("Kernel32\FreeConsole", "UInt")) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
@@ -100,9 +100,9 @@ class Console {
 
 	static IsVisible {
 		Get {
-			handle := this.Handle
+			hWnd := this.Handle
 
-			return (DllCall("User32\IsWindowVisible", "UInt", handle, "UInt") && (WinGetMinMax(handle) != -1))
+			return (DllCall("User32\IsWindowVisible", "UInt", hWnd, "UInt") && (WinGetMinMax(hWnd) != -1))
 		}
 	}
 
@@ -198,52 +198,6 @@ class Console {
 		}
 	}
 
-	static KeyboardHook {
-		Set {
-			this.SetKeyboardHook(value)
-
-			return (value)
-		}
-	}
-
-	static SetKeyboardHook(keyboardProc) {
-		if (this.__KeyboardHook && !DllCall("User32\UnhookWindowsHookEx", "Ptr", this.__KeyboardHook, "UInt")) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
-		}
-
-		if (keyboardProc is Func) {
-			if (!(this.__KeyboardHook := DllCall("User32\SetWindowsHookEx", "Int", 13, "Ptr", CallbackCreate(keyboardProc, "Fast"), "Ptr", DllCall("Kernel32\GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr"))) {
-				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
-			}
-		}
-		else if (IsSet(A_Debug) && A_Debug) {
-			throw (TypeError(Format("``keyboardProc``({}) is invalid.", Type(keyboardProc)), -2, "This parameter must be a callback."))
-		}
-	}
-
-	static MouseHook {
-		Set {
-			this.SetMouseHook(value)
-
-			return (value)
-		}
-	}
-
-	static SetMouseHook(mouseProc) {
-		if (this.__MouseHook && !DllCall("User32\UnhookWindowsHookEx", "Ptr", this.__MouseHook, "UInt")) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
-		}
-
-		if (mouseProc is Func) {
-			if (!(this.__MouseHook := DllCall("User32\SetWindowsHookEx", "Int", 14, "Ptr", CallbackCreate(mouseProc, "Fast"), "Ptr", DllCall("Kernel32\GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr"))) {
-				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
-			}
-		}
-		else if (IsSet(A_Debug) && A_Debug) {
-			throw (TypeError(Format("``mouseProc``({}) is invalid.", Type(mouseProc)), -2, "This parameter must be a callback."))
-		}
-	}
-
 	;--------------- Method -------------------------------------------------------;
 
 	static FillOutputCharacter(character, length, x, y) {
@@ -254,20 +208,23 @@ class Console {
 		return (numberOfCharsWritten)
 	}
 
-	static Show(keyboardProc := LowLevelKeyboardProc, mouseProc := LowLevelMouseProc) {
+	static Show(activate := False, keyboardHook?, mouseHook?) {
 		if (!this.IsVisible) {
-			if (!this.__KeyboardHook) {  ;* It is possible to set a hook prior to showing the console so only set the default hook if that's not the case.
-				if (!(this.__KeyboardHook := DllCall("User32\SetWindowsHookEx", "Int", 13, "Ptr", CallbackCreate(keyboardProc, "Fast"), "Ptr", DllCall("Kernel32\GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr"))) {
-					throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
-				}
+			DllCall("User32\ShowWindow", "Ptr", this.Handle, "Int", 4 + activate)  ;? 4 = SW_SHOWNOACTIVATE, 5 = SW_SHOW
+
+			if (IsSet(keyboardHook)) {
+				this.KeyboardHook := keyboardHook
+			}
+			else if (!this.KeyboardHook) {  ;* It is possible to set a hook prior to showing the console and/or not unhooking when hiding the console so only set the default hook if that is not the case and no hook was passed as a parameter.
+				this.KeyboardHook := Hook(13, __LowLevelKeyboardProc)
 
 				time := A_TickCount
 
-				LowLevelKeyboardProc(nCode, wParam, lParam) {
+				__LowLevelKeyboardProc(nCode, wParam, lParam) {
 					Critical(True)
 
-					if (!nCode && !this.TimeOut) {  ;? 0 = HC_ACTION
-						if (Format("{:#x}", NumGet(lParam, "UInt")) == 0x1B && (WinActive("ahk_group Console") || A_TickCount - time < 2000)) {  ;? 0x1B = VK_ESCAPE
+					if (!nCode) {  ;? 0 = HC_ACTION
+						if (Format("{:#x}", NumGet(lParam, "UInt")) == 0x1B && (WinActive("ahk_group Console") || A_TickCount - time <= 5000)) {  ;? 0x1B = VK_ESCAPE
 							if (wParam == 0x0101) {  ;? 0x0101 = WM_KEYUP
 								this.Hide()
 							}
@@ -280,15 +237,16 @@ class Console {
 				}
 			}
 
-			if (!this.__MouseHook) {
-				if (!(this.__MouseHook := DllCall("User32\SetWindowsHookEx", "Int", 14, "Ptr", CallbackCreate(mouseProc, "Fast"), "Ptr", DllCall("Kernel32\GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr"))) {
-					throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
-				}
+			if (IsSet(mouseHook)) {
+				this.MouseHook := mouseHook
+			}
+			else if (!this.MouseHook) {
+				this.MouseHook := Hook(14, __LowLevelMouseProc)
 
-				LowLevelMouseProc(nCode, wParam, lParam) {
+				__LowLevelMouseProc(nCode, wParam, lParam) {
 					Critical(True)
 
-					if (!nCode && !this.TimeOut) {
+					if (!nCode) {
 						if (WinActive("ahk_group Console")) {
 							switch (wParam) {
 								case 0x0201:  ;? 0x0201 = WM_LBUTTONDOWN
@@ -299,12 +257,10 @@ class Console {
 					return (DllCall("User32\CallNextHookEx", "Ptr", 0, "Int", nCode, "Ptr", wParam, "Ptr", lParam, "Ptr"))
 				}
 			}
-
-			DllCall("User32\ShowWindow", "Ptr", this.Handle, "Int", 4)  ;? 4 = SW_SHOWNOACTIVATE
 		}
 	}
 
-	static Hide() {
+	static Hide(unhook := True) {
 		if (this.IsVisible) {
 			WinHide(this.Handle)
 
@@ -315,11 +271,9 @@ class Console {
 				Send("!{Escape}")
 			}
 
-			if (!DllCall("User32\UnhookWindowsHookEx", "Ptr", this.__KeyboardHook, "UInt") || !DllCall("User32\UnhookWindowsHookEx", "Ptr", this.__MouseHook, "UInt")) {
-				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+			if (unhook) {
+				this.KeyboardHook := 0, this.MouseHook := 0
 			}
-
-			this.__KeyboardHook := 0, this.__MouseHook := 0
 		}
 	}
 
@@ -354,8 +308,6 @@ class Console {
 			numberOfCharsToRead := this.GetSize().Width
 		}
 
-		this.TimeOut := True
-
 		try {
 			activeHandle := WinGetID("A")
 		}
@@ -371,6 +323,8 @@ class Console {
 			}
 		}
 
+		this.KeyboardHook.UnHook(), this.MouseHook.UnHook()
+
 		WinActivate(this.Handle)
 
 		if (!DllCall("Kernel32\ReadConsole", "Ptr", this.Input, "Ptr", (data := Buffer(numberOfCharsToRead*2)).Ptr, "UInt", numberOfCharsToRead, "UInt*", &(numberOfCharsRead := 0), "Ptr", Buffer.CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Ptr, "UInt")) {
@@ -379,7 +333,7 @@ class Console {
 
 		WinActivate(activeHandle)
 
-		this.TimeOut := False
+		this.KeyboardHook.Hook(), this.MouseHook.Hook()
 
 		return (SubStr(data.StrGet(), 1, numberOfCharsRead - 2))  ;* Account for the newline and carriage return characters.
 	}
