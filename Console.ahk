@@ -1,4 +1,4 @@
-#Requires AutoHotkey v2.0-beta.9
+#Requires AutoHotkey v2.0-beta.12
 
 /*
 * MIT License
@@ -25,15 +25,18 @@
 */
 
 ;============ Auto-Execute ====================================================;
-;======================================================  Include  ==============;
 
-#Include %A_LineFile%\..\..\Core.ahk  ;* Import `Hook()`, `Buffer()` and `ErrorFromMessage()`.
+#Include ..\Core.ahk
 
 ;===============  Class  =======================================================;
 
 class Console {
 	static Handle := this.Create()
-		, KeyboardHook := 0, MouseHook := 0
+		, KeyboardHook := "Default", MouseHook := "Default"
+
+	__New(params*) {
+		throw (TargetError("This class may not be constructed.", -1))
+	}
 
 	static Create() {
 		if (!this.HasProp("Window")) {
@@ -95,8 +98,6 @@ class Console {
 
 		this.DeleteProp("Window")
 	}
-
-	;-------------- Property ------------------------------------------------------;
 
 	static IsVisible {
 		Get {
@@ -198,8 +199,6 @@ class Console {
 		}
 	}
 
-	;--------------- Method -------------------------------------------------------;
-
 	static FillOutputCharacter(character, length, x, y) {
 		if (!DllCall("Kernel32\FillConsoleOutputCharacter", "Ptr", this.Output, "Short", Ord(character), "UInt", length, "UInt", x | y << 4, "UInt*", &(numberOfCharsWritten := 0), "UInt")) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
@@ -208,58 +207,73 @@ class Console {
 		return (numberOfCharsWritten)
 	}
 
-	static Show(activate := False, keyboardHook?, mouseHook?) {
+	/**
+	 * Shows the console window if it is not already shown.
+	 * @param {Boolean} [activate] - Whether or not to activate the console window.
+	 * @param {Boolean|Hook} [keyboardHook] - A keyboard hook to be used instead of the default.
+	 * @param {Boolean|Hook} [mouseHook] - A mouse hook to be used instead of the default.
+	 */
+	static Show(activate := False, keyboardHook := True, mouseHook := True) {
 		if (!this.IsVisible) {
 			DllCall("User32\ShowWindow", "Ptr", this.Handle, "Int", 4 + activate)  ;? 4 = SW_SHOWNOACTIVATE, 5 = SW_SHOW
 
-			if (IsSet(keyboardHook)) {
-				this.KeyboardHook := keyboardHook
-			}
-			else if (!this.KeyboardHook) {  ;* It is possible to set a hook prior to showing the console and/or not unhooking when hiding the console so only set the default hook if that is not the case and no hook was passed as a parameter.
-				this.KeyboardHook := Hook(13, __LowLevelKeyboardProc)
 
-				time := A_TickCount
+			if (keyboardHook) {
+				if (keyboardHook is Hook) {
+					this.KeyboardHook := keyboardHook
+				}
+				else if (this.KeyboardHook == "Default") {  ;* It is possible to set a hook prior to showing the console and/or not unhooking when hiding the console so only set the default hook if that is not the case and no hook was passed as a parameter.
+					this.KeyboardHook := Hook(13, __LowLevelKeyboardProc)
 
-				__LowLevelKeyboardProc(nCode, wParam, lParam) {
-					Critical(True)
+					time := A_TickCount
 
-					if (!nCode) {  ;? 0 = HC_ACTION
-						if (Format("{:#x}", NumGet(lParam, "UInt")) == 0x1B && (WinActive("ahk_group Console") || A_TickCount - time <= 5000)) {  ;? 0x1B = VK_ESCAPE
-							if (wParam == 0x0101) {  ;? 0x0101 = WM_KEYUP
-								this.Hide()
+					__LowLevelKeyboardProc(nCode, wParam, lParam) {
+						Critical(True)
+
+						if (!nCode) {  ;? 0 = HC_ACTION
+							if (Format("{:#x}", NumGet(lParam, "UInt")) == 0x1B && (WinActive("ahk_group Console") || A_TickCount - time <= 5000)) {  ;? 0x1B = VK_ESCAPE
+								if (wParam == 0x0101) {  ;? 0x0101 = WM_KEYUP
+									this.Hide()
+								}
+
+								return (1)
 							}
-
-							return (1)
 						}
-					}
 
-					return (DllCall("User32\CallNextHookEx", "Ptr", 0, "Int", nCode, "Ptr", wParam, "Ptr", lParam, "Ptr"))
+						return (DllCall("User32\CallNextHookEx", "Ptr", 0, "Int", nCode, "Ptr", wParam, "Ptr", lParam, "Ptr"))
+					}
 				}
 			}
 
-			if (IsSet(mouseHook)) {
-				this.MouseHook := mouseHook
-			}
-			else if (!this.MouseHook) {
-				this.MouseHook := Hook(14, __LowLevelMouseProc)
+			if (mouseHook) {
+				if (mouseHook is Hook) {
+					this.MouseHook := mouseHook
+				}
+				else if (this.MouseHook == "Default") {
+					this.MouseHook := Hook(14, __LowLevelMouseProc)
 
-				__LowLevelMouseProc(nCode, wParam, lParam) {
-					Critical(True)
+					__LowLevelMouseProc(nCode, wParam, lParam) {
+						Critical(True)
 
-					if (!nCode) {
-						if (WinActive("ahk_group Console")) {
-							switch (wParam) {
-								case 0x0201:  ;? 0x0201 = WM_LBUTTONDOWN
+						if (!nCode) {
+							if (WinActive("ahk_group Console")) {
+								switch (wParam) {
+									case 0x0201:  ;? 0x0201 = WM_LBUTTONDOWN
+								}
 							}
 						}
-					}
 
-					return (DllCall("User32\CallNextHookEx", "Ptr", 0, "Int", nCode, "Ptr", wParam, "Ptr", lParam, "Ptr"))
+						return (DllCall("User32\CallNextHookEx", "Ptr", 0, "Int", nCode, "Ptr", wParam, "Ptr", lParam, "Ptr"))
+					}
 				}
 			}
 		}
 	}
 
+	/**
+	 * Hides the console window if it is not already hidden.
+	 * @param {Boolean} [unhook] - Whether or not to unhook the keyboard and mouse hooks.
+	 */
 	static Hide(unhook := True) {
 		if (this.IsVisible) {
 			WinHide(this.Handle)
@@ -272,26 +286,30 @@ class Console {
 			}
 
 			if (unhook) {
-				this.KeyboardHook := 0, this.MouseHook := 0
+				this.KeyboardHook := "Default", this.MouseHook := "Default"
 			}
 		}
 	}
 
-	static Log(text := "", newLine := True) {
-		if (text != "") {
-			if (!this.IsVisible) {
-				this.Show()
-			}
+	/**
+	 * Writes a character string to the console output buffer and shows the window if it is not already shown.
+	 * @param {String} [characters] - The characters to be written to the console output buffer.
+	 * @param {Boolean} [newLine] - Whether or not to insert a newline character after `characters`.
+	 * @return {Integer} - The number of characters actually written to the console output buffer.
+	 */
+	static Log(characters := "", newLine := True) {
+		if (characters != "") {
+			this.Show()
 
-			if (text.HasProp("Print")) {
-				text := text.Print()
+			if (characters.HasProp("Print")) {
+				characters := characters.Print()
 			}
 
 			if (newLine) {
-				text .= "`n"
+				characters .= "`n"
 			}
 
-			if (!DllCall("Kernel32\WriteConsole", "Ptr", this.Output, "Str", text, "UInt", StrLen(text), "UInt*", &(written := 0), "Ptr", 0, "UInt")) {
+			if (!DllCall("Kernel32\WriteConsole", "Ptr", this.Output, "Str", characters, "UInt", StrLen(characters), "UInt*", &(written := 0), "Ptr", 0, "UInt")) {  ;: https://learn.microsoft.com/en-us/windows/console/writeconsole
 				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 			}
 
@@ -299,14 +317,13 @@ class Console {
 		}
 	}
 
-	static Read(numberOfCharsToRead?) {
-		if (!this.IsVisible) {
-			this.Show()
-		}
-
-		if (!IsSet(numberOfCharsToRead)) {
-			numberOfCharsToRead := this.GetSize().Width
-		}
+	/**
+	 * Reads character input from the console input buffer.
+	 * @param {Integer} [numberOfCharsToRead] - The number of characters to be read.
+	 * @return {String} - The characters read from the console input buffer.
+	 */
+	static Read(numberOfCharsToRead := this.GetSize().Width) {
+		this.Show()
 
 		try {
 			activeHandle := WinGetID("A")
@@ -327,7 +344,7 @@ class Console {
 
 		WinActivate(this.Handle)
 
-		if (!DllCall("Kernel32\ReadConsole", "Ptr", this.Input, "Ptr", (data := Buffer(numberOfCharsToRead*2)).Ptr, "UInt", numberOfCharsToRead, "UInt*", &(numberOfCharsRead := 0), "Ptr", Buffer.CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Ptr, "UInt")) {
+		if (!DllCall("Kernel32\ReadConsole", "Ptr", this.Input, "Ptr", (data := Buffer(numberOfCharsToRead*2)).Ptr, "UInt", numberOfCharsToRead, "UInt*", &(numberOfCharsRead := 0), "Ptr", Buffer.CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Ptr, "UInt")) {  ;: https://learn.microsoft.com/en-us/windows/console/readconsole
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
 
@@ -335,9 +352,13 @@ class Console {
 
 		this.KeyboardHook.Hook(), this.MouseHook.Hook()
 
-		return (SubStr(data.StrGet(), 1, numberOfCharsRead - 2))  ;* Account for the newline and carriage return characters.
+		return (SubStr(RegExReplace(data.StrGet(), "(.*?)\v*$", "$1"), 1, numberOfCharsRead))  ;* Strip the newline character from the end (captured if {Enter} was input before the string exceeded `numberOfCharsToRead`).
 	}
 
+	/**
+	 * Clear the console output buffer and removes the vertical scroll bar.
+	 * @return {Integer} - The number of characters actually written to the console output buffer.
+	 */
 	static Clear() {
 		size := this.GetSize()
 
