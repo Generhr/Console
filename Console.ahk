@@ -30,6 +30,28 @@
 
 ;===============  Class  =======================================================;
 
+/*
+	** GDIp_Enums: https://github.com/mono/libgdiplus/blob/main/src/gdipenums.h **
+
+;* enum ConsoleColor  ;: https://learn.microsoft.com/en-us/dotnet/api/system.consolecolor?view=net-7.0
+	0x0 = Black
+	0x9 = Blue
+	0xB = Cyan
+	0x1 = DarkBlue
+	0x3 = DarkCyan
+	0x8 = DarkGray
+	0x2 = DarkGreen
+	0x5 = DarkMagenta
+	0x4 = DarkRed
+	0x6 = DarkYellow
+	0x7 = Gray
+	0xA = Green
+	0xD = Magenta
+	0xC = Red
+	0xF = White
+	0xE = Yellow
+*/
+
 class Console {
 	static Handle := this.Create()
 		, KeyboardHook := "Default", MouseHook := "Default"
@@ -75,7 +97,7 @@ class Console {
 			this.Input := DllCall("Kernel32\GetStdHandle", "Int", -10, "Ptr"), this.Output := DllCall("Kernel32\GetStdHandle", "Int", -11, "Ptr")
 
 			this.SetTitle("Console")
-			this.SetColor(0x0, 0xA)
+			this.SetColor(0xA, 0x0)
 
 			if (!DllCall("Kernel32\SetConsoleCtrlHandler", "UInt", this.__ConsoleCtrlHandlerCallback := CallbackCreate((ctrlType) => (ctrlType == 0 || ctrlType == 2), "Fast", 1), "UInt", 1, "UInt")) {  ;: https://docs.microsoft.com/en-us/windows/console/handlerroutine
 				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
@@ -103,7 +125,7 @@ class Console {
 		Get {
 			hWnd := this.Handle
 
-			return (DllCall("User32\IsWindowVisible", "UInt", hWnd, "UInt") && (WinGetMinMax(hWnd) != -1))
+			return (DllCall("User32\IsWindowVisible", "UInt", hWnd, "UInt") && WinGetMinMax(hWnd) != -1)
 		}
 	}
 
@@ -121,7 +143,7 @@ class Console {
 		return ({BackgroundColor: Format("0x{:X}", NumGet(consoleScreenBufferInfo.Ptr + 8, "Short") >> 4), ForegroundColor: Format("0x{:X}", NumGet(consoleScreenBufferInfo.Ptr + 8, "Short") & 0xF)})
 	}
 
-	static SetColor(backgroundColor := 0x0, foregroundColor := 0xF) {
+	static SetColor(foregroundColor := 0xA, backgroundColor := 0x0) {
 		if (!DllCall("Kernel32\SetConsoleTextAttribute", "Int", this.Output, "Int", backgroundColor << 4 | foregroundColor)) {
 			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
 		}
@@ -293,16 +315,23 @@ class Console {
 
 	/**
 	 * Writes a character string to the console output buffer and shows the window if it is not already shown.
-	 * @param {String} [characters] - The characters to be written to the console output buffer.
+	 * @param {String} characters - The characters to be written to the console output buffer.
+	 * @param {Integer} [foregroundColor] -
 	 * @param {Boolean} [newLine] - Whether or not to insert a newline character after `characters`.
 	 * @return {Integer} - The number of characters actually written to the console output buffer.
 	 */
-	static Log(characters := "", newLine := True) {
+	static Log(characters, foregroundColor := unset, newLine := True) {
 		if (characters != "") {
 			this.Show()
 
 			if (characters.HasProp("Print")) {
 				characters := characters.Print()
+			}
+
+			if (IsSet(foregroundColor)) {
+				oldForegroundColor := this.GetColor().ForegroundColor
+
+				this.SetColor(foregroundColor)
 			}
 
 			if (newLine) {
@@ -311,6 +340,10 @@ class Console {
 
 			if (!DllCall("Kernel32\WriteConsole", "Ptr", this.Output, "Str", characters, "UInt", StrLen(characters), "UInt*", &(written := 0), "Ptr", 0, "UInt")) {  ;: https://learn.microsoft.com/en-us/windows/console/writeconsole
 				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+			}
+
+			if (IsSet(oldForegroundColor)) {
+				this.SetColor(oldForegroundColor)
 			}
 
 			return (written - !!newLine)  ;* Account for the newline character.
