@@ -24,12 +24,6 @@
 * SOFTWARE.
 */
 
-;============ Auto-Execute ====================================================;
-
-#Include ..\Core.ahk
-
-;===============  Class  =======================================================;
-
 /*
 	** GDIp_Enums: https://github.com/mono/libgdiplus/blob/main/src/gdipenums.h **
 
@@ -78,14 +72,14 @@ class Console {
 			}
 
 			if (!DllCall("Kernel32\AllocConsole", "UInt")) {
-				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+				throw (OSError())
 			}
 
-			consoleHandle := DllCall("Kernel32\GetConsoleWindow")
+			consoleHandle := DllCall("Kernel32\GetConsoleWindow", "Ptr")
 
 			if (!DllCall("User32\SetWindowPos", "Ptr", consoleHandle, "Ptr", -1  ;? -1 = HWND_TOPMOST
 				, "Int", A_ScreenWidth - 800, "Int", 50, "Int", 750, "Int", 500, "UInt", 0x0080, "UInt")) {  ;? 0x0080 = SWP_HIDEWINDOW  ;: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos
-				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+				throw (OSError())
 			}
 
 			WinSetStyle(-0x00E40000, consoleHandle)  ;? 0x00E40000 = WS_CAPTION | WS_THICKFRAME | WS_VSCROLL
@@ -100,7 +94,7 @@ class Console {
 			this.SetColor(0xA, 0x0)
 
 			if (!DllCall("Kernel32\SetConsoleCtrlHandler", "UInt", this.__ConsoleCtrlHandlerCallback := CallbackCreate((ctrlType) => (ctrlType == 0 || ctrlType == 2), "Fast", 1), "UInt", 1, "UInt")) {  ;: https://docs.microsoft.com/en-us/windows/console/handlerroutine
-				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+				throw (OSError())
 			}
 
 			GroupAdd("Console", "ahk_ID" . consoleHandle)
@@ -115,7 +109,7 @@ class Console {
 		CallbackFree(this.__ConsoleCtrlHandlerCallback)
 
 		if (!DllCall("Kernel32\FreeConsole", "UInt")) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+			throw (OSError())
 		}
 
 		this.DeleteProp("Window")
@@ -137,15 +131,15 @@ class Console {
 
 	static GetColor() {
 		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Buffer(20)).Ptr, "UInt")) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+			throw (OSError())
 		}
 
 		return ({BackgroundColor: Format("0x{:X}", NumGet(consoleScreenBufferInfo.Ptr + 8, "Short") >> 4), ForegroundColor: Format("0x{:X}", NumGet(consoleScreenBufferInfo.Ptr + 8, "Short") & 0xF)})
 	}
 
 	static SetColor(foregroundColor := 0xA, backgroundColor := 0x0) {
-		if (!DllCall("Kernel32\SetConsoleTextAttribute", "Int", this.Output, "Int", backgroundColor << 4 | foregroundColor)) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+		if (!DllCall("Kernel32\SetConsoleTextAttribute", "Ptr", this.Output, "UInt", foregroundColor | backgroundColor << 4, "UInt")) {
+			throw (OSError())
 		}
 	}
 
@@ -156,16 +150,16 @@ class Console {
 	}
 
 	static GetCursorPosition() {
-		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Buffer(20)).Ptr)) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Buffer(20)).Ptr, "UInt")) {
+			throw (OSError())
 		}
 
-		return ({x: consoleScreenBufferInfo.NumGet(4, "Short"), y: consoleScreenBufferInfo.NumGet(6, "Short")})
+		return ({x: NumGet(consoleScreenBufferInfo.Ptr + 4, "Short"), y: NumGet(consoleScreenBufferInfo.Ptr + 6, "Short")})
 	}
 
 	static SetCursorPosition(x, y) {
 		if (!DllCall("Kernel32\SetConsoleCursorPosition", "Ptr", this.Output, "UInt", x << 4 | y, "UInt")) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+			throw (OSError())
 		}
 	}
 
@@ -176,23 +170,33 @@ class Console {
 	}
 
 	static GetSize() {
-		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Buffer(20)).Ptr)) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+		if (!DllCall("Kernel32\GetConsoleScreenBufferInfo", "Ptr", this.Output, "Ptr", (consoleScreenBufferInfo := Buffer(20)).Ptr, "UInt")) {
+			throw (OSError())
 		}
 
-		return ({Width: consoleScreenBufferInfo.NumGet(0, "Short"), Height: consoleScreenBufferInfo.NumGet(2, "Short")})
+		return ({Width: NumGet(consoleScreenBufferInfo.Ptr, "Short"), Height: NumGet(consoleScreenBufferInfo.Ptr + 2, "Short")})
 	}
 
 	static SetSize(width, height) {
-		if (!DllCall("Kernel32\SetConsoleScreenBufferSize", "Ptr", this.Output, "Ptr", Buffer.CreateCoord(width, height).Ptr)) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+		if (!DllCall("Kernel32\SetConsoleScreenBufferSize", "Ptr", this.Output, "Ptr", __CreateCoord(width, height).Ptr, "UInt")) {
+			throw (OSError())
 		}
 
-		if (!DllCall("Kernel32\SetConsoleWindowInfo", "Ptr", this.Output, "UInt", True, "Ptr", Buffer.CreateSmallRect(0, 0, width, height).Ptr)) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+		__CreateCoord(x, y) {
+			coord := Buffer(4), NumPut("Short", x, "Short", y, coord)
+			return (coord)
 		}
 
-		return (DllCall("Kernel32\SetConsoleScreenBufferSize", "Ptr", this.Output, "UInt", width | height << 16))
+		if (!DllCall("Kernel32\SetConsoleWindowInfo", "Ptr", this.Output, "UInt", True, "Ptr", __CreateSmallRect(0, 0, width, height).Ptr, "UInt")) {
+			throw (OSError())
+		}
+
+		__CreateSmallRect(x, y, width, height) {
+			smallRect := Buffer(8), NumPut("Short", x, "Short", y, "Short", x + width - 1, "Short", y + height - 1, smallRect)
+			return (smallRect)
+		}
+
+		return (DllCall("Kernel32\SetConsoleScreenBufferSize", "Ptr", this.Output, "UInt", width | height << 16, "UInt"))
 	}
 
 	static Title {
@@ -209,7 +213,7 @@ class Console {
 
 	static GetTitle() {
 		if (!DllCall("Kernel32\GetConsoleTitle", "Ptr", (title := Buffer(80)).Ptr, "UInt", 80, "UInt")) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+			throw (OSError())
 		}
 
 		return (StrGet(title))
@@ -217,13 +221,13 @@ class Console {
 
 	static SetTitle(title) {
 		if (!DllCall("Kernel32\SetConsoleTitle", "Str", title, "UInt")) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+			throw (OSError())
 		}
 	}
 
 	static FillOutputCharacter(character, length, x, y) {
 		if (!DllCall("Kernel32\FillConsoleOutputCharacter", "Ptr", this.Output, "Short", Ord(character), "UInt", length, "UInt", x | y << 4, "UInt*", &(numberOfCharsWritten := 0), "UInt")) {
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+			throw (OSError())
 		}
 
 		return (numberOfCharsWritten)
@@ -239,13 +243,12 @@ class Console {
 		if (!this.IsVisible) {
 			DllCall("User32\ShowWindow", "Ptr", this.Handle, "Int", 4 + activate)  ;? 4 = SW_SHOWNOACTIVATE, 5 = SW_SHOW
 
-
 			if (keyboardHook) {
-				if (keyboardHook is Hook) {
+				if (keyboardHook.__Class == "Hook") {
 					this.KeyboardHook := keyboardHook
 				}
 				else if (this.KeyboardHook == "Default") {  ;* It is possible to set a hook prior to showing the console and/or not unhooking when hiding the console so only set the default hook if that is not the case and no hook was passed as a parameter.
-					this.KeyboardHook := Hook(13, __LowLevelKeyboardProc)
+					this.KeyboardHook := this.Hook(13, __LowLevelKeyboardProc)
 
 					time := A_TickCount
 
@@ -268,24 +271,26 @@ class Console {
 			}
 
 			if (mouseHook) {
-				if (mouseHook is Hook) {
+				if (mouseHook.__Class == "Hook") {
 					this.MouseHook := mouseHook
 				}
 				else if (this.MouseHook == "Default") {
-					this.MouseHook := Hook(14, __LowLevelMouseProc)
+					try {
+						this.MouseHook := this.Hook(14, __LowLevelMouseProc)
 
-					__LowLevelMouseProc(nCode, wParam, lParam) {
-						Critical(True)
+						__LowLevelMouseProc(nCode, wParam, lParam) {
+							Critical(True)
 
-						if (!nCode) {
-							if (WinActive("ahk_group Console")) {
-								switch (wParam) {
-									case 0x0201:  ;? 0x0201 = WM_LBUTTONDOWN
+							if (!nCode) {
+								if (WinActive("ahk_group Console")) {
+									switch (wParam) {
+										case 0x0201:  ;? 0x0201 = WM_LBUTTONDOWN
+									}
 								}
 							}
-						}
 
-						return (DllCall("User32\CallNextHookEx", "Ptr", 0, "Int", nCode, "Ptr", wParam, "Ptr", lParam, "Ptr"))
+							return (DllCall("User32\CallNextHookEx", "Ptr", 0, "Int", nCode, "Ptr", wParam, "Ptr", lParam, "Ptr"))
+						}
 					}
 				}
 			}
@@ -320,7 +325,7 @@ class Console {
 	 * @param {Boolean} [newLine] - Whether or not to insert a newline character after `characters`.
 	 * @return {Integer} - The number of characters actually written to the console output buffer.
 	 */
-	static Log(characters, foregroundColor := unset, newLine := True) {
+	static Log(characters, foregroundColor?, newLine := True) {
 		if (characters != "") {
 			this.Show()
 
@@ -339,7 +344,7 @@ class Console {
 			}
 
 			if (!DllCall("Kernel32\WriteConsole", "Ptr", this.Output, "Str", characters, "UInt", StrLen(characters), "UInt*", &(written := 0), "Ptr", 0, "UInt")) {  ;: https://learn.microsoft.com/en-us/windows/console/writeconsole
-				throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+				throw (OSError())
 			}
 
 			if (IsSet(oldForegroundColor)) {
@@ -377,8 +382,13 @@ class Console {
 
 		WinActivate(this.Handle)
 
-		if (!DllCall("Kernel32\ReadConsole", "Ptr", this.Input, "Ptr", (data := Buffer(numberOfCharsToRead*2)).Ptr, "UInt", numberOfCharsToRead, "UInt*", &(numberOfCharsRead := 0), "Ptr", Buffer.CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Ptr, "UInt")) {  ;: https://learn.microsoft.com/en-us/windows/console/readconsole
-			throw (ErrorFromMessage(DllCall("Kernel32\GetLastError")))
+		if (!DllCall("Kernel32\ReadConsole", "Ptr", this.Input, "Ptr", (data := Buffer(numberOfCharsToRead*2)).Ptr, "UInt", numberOfCharsToRead, "UInt*", &(numberOfCharsRead := 0), "Ptr", __CreateConsoleReadConsoleControl(0, (1 << 0x0A) | (1 << 0x1B)).Ptr, "UInt")) {  ;: https://learn.microsoft.com/en-us/windows/console/readconsole
+			throw (OSError())
+		}
+
+		__CreateConsoleReadConsoleControl(initialChars := 0, ctrlWakeupMask := 0x0A, controlKeyState := 0) {
+			consoleReadConsoleControl := Buffer(16), NumPut("UInt", 16, "UInt", initialChars, "UInt", ctrlWakeupMask, "UInt", controlKeyState, consoleReadConsoleControl)
+			return (consoleReadConsoleControl)
 		}
 
 		WinActivate(activeHandle)
@@ -401,5 +411,62 @@ class Console {
 		WinSetStyle(-0x00200000, this.Handle)  ;? 0x00200000 = WS_VSCROLL
 
 		return (numberOfCharsWritten)
+	}
+
+	class Hook {
+
+		/**
+		 * Creates a new Hook instance.
+		 * @constructor
+		 * @param {Integer} idHook - The type of hook procedure to be installed.
+		 * @param {Function} function - The DLL or function to use as the callback for the hook.
+		 * @param {String} [options]
+		 * @returns {Hook}
+		 */
+		__New(idHook, function, options := "Fast") {
+			if (!(hHook := DllCall("User32\SetWindowsHookEx", "Int", idHook, "Ptr", pCallback := CallbackCreate(function, options), "Ptr", DllCall("Kernel32\GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr"))) {  ;: https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowshookexw
+				throw (OSError())
+			}
+
+			this.Handle := hHook, this.Callback := pCallback
+				, this.State := 1
+		}
+
+		__Delete() {
+			if (this.State && !DllCall("User32\UnhookWindowsHookEx", "Ptr", this.Handle, "UInt")) {
+				throw (OSError())
+			}
+
+			CallbackFree(this.Callback)
+		}
+
+		Hook(function?, options := "Fast") {
+			if (IsSet(function)) {
+				if (this.State) {
+					if (!DllCall("User32\UnhookWindowsHookEx", "Ptr", this.Handle, "UInt")) {
+						throw (OSError())
+					}
+
+					CallbackFree(this.Callback)
+				}
+
+				if (!(this.Handle := DllCall("User32\SetWindowsHookEx", "Int", 13, "Ptr", this.Callback := CallbackCreate(function, options), "Ptr", DllCall("Kernel32\GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr"))) {
+					throw (OSError())
+				}
+			}
+			else if (!this.State && !(this.Handle := DllCall("User32\SetWindowsHookEx", "Int", 13, "Ptr", this.Callback, "Ptr", DllCall("Kernel32\GetModuleHandle", "Ptr", 0, "Ptr"), "UInt", 0, "Ptr"))) {
+				throw (OSError())
+			}
+
+			this.State := 1
+		}
+
+		UnHook() {
+			if (!DllCall("User32\UnhookWindowsHookEx", "Ptr", this.Handle, "UInt")) {
+				throw (OSError())
+			}
+
+			this.State := 0
+		}
 	}
 }
