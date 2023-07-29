@@ -1,9 +1,9 @@
-#Requires AutoHotkey v2.0-beta.12
+#Requires AutoHotkey v2.0.0
 
 /*
-* MIT License
+* The MIT License (MIT)
 *
-* Copyright (c) 2022 Onimuru
+* Copyright (c) 2021 - 2023, Chad Blease
 *
 * Permission is hereby granted, free of charge, to any person obtaining a copy
 * of this software and associated documentation files (the "Software"), to deal
@@ -25,8 +25,6 @@
 */
 
 /*
-	** GDIp_Enums: https://github.com/mono/libgdiplus/blob/main/src/gdipenums.h **
-
 ;* enum ConsoleColor  ;: https://learn.microsoft.com/en-us/dotnet/api/system.consolecolor?view=net-7.0
 	0x0 = Black
 	0x9 = Blue
@@ -301,7 +299,7 @@ class Console {
 	 * Hides the console window if it is not already hidden.
 	 * @param {Boolean} [unhook] - Whether or not to unhook the keyboard and mouse hooks.
 	 */
-	static Hide(unhook := True) {
+	static Hide(clear := True, unhook := True) {
 		if (this.IsVisible) {
 			WinHide(this.Handle)
 
@@ -310,6 +308,10 @@ class Console {
 			}
 			catch {
 				Send("!{Escape}")
+			}
+
+			if (clear) {
+				Console.Clear()
 			}
 
 			if (unhook) {
